@@ -175,6 +175,8 @@ Anota um campo de uma classe.
 - Permite dizer o nome do campo no banco de dados.
 - Permite forçar o tipo da coluna (via `type`).
 - Permite adicioanr um valor padrão no esquema da tabela (via `default`).
+  - O valor de `default` será colocado diretamente no SQL _statement_. Logo, se o valor for uma _string_,
+    é necessário colocar as aspas simples na _string_ (por exemplo, `default = "'foo'"`A.)
 
 ### `@DateTime(timezoneOffset = true)`
 Anota um campo de uma classe.
