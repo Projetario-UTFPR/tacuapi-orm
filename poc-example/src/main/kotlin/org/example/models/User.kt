@@ -50,13 +50,14 @@ class User {
     val id = Uuid.random()
 
     @VarcharConfig(size = 200)
+    @InputField(label = "Nome")
     val name: String
 
     @Column(unique = true)
     @InputField(label = "Endereço de e-mail", placeholder = "johndoe@utfpr.com", type = "email")
     val email: String
 
-    @InputField(footnote = "Deve ter, no mínimo, 6 dígitos.", type = "password")
+    @InputField(label = "Senha", footnote = "Deve ter, no mínimo, 6 dígitos.", type = "password")
     val password: String
 
     @DateTime(timezoneOffset = true)
@@ -67,15 +68,19 @@ class User {
     @InputOmit
     @Column(name = "updated_at")
     val updatedAt: Instant? = null
+
+    @InputField(label = "Cargo")
     val role: UserRole
 
     @InputOmit
     val likes: Int = 1
 
     @Multivalued
+    @InputField(label = "Permissões", footnote = "Permissões do usuário dentro do site. (Apenas para mostrar o multiselect.)")
     val capabilities: List<UserCapabilities>
 
     @Text
+    @InputField(label = "Biografia")
     val biography: String
 
     constructor(
