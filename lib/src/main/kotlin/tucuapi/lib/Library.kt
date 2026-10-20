@@ -331,6 +331,94 @@ object Tucuapi {
     }
 
     // ===============================================================
+    // INSERT
+    // ===============================================================
+
+    /**
+     * Constrói uma instância do modelo a partir dos parâmetros de um formulário.
+     *
+     * Os valores são convertidos para o tipo do campo (números, booleanos,
+     * datas, _enums_ e listas de _enums_) e os parâmetros sem valor ficam de
+     * fora, para que a própria classe use o seu valor padrão.
+     *
+     * O construtor da classe não pode exigir valores que não venham do
+     * formulário — campos como a chave primária devem ser gerados pela própria
+     * classe (e não passados ao construtor).
+     *
+     * @param params os parâmetros recebidos, indexados pelo nome da coluna
+     */
+    fun createInstance(model: KClass<*>, params: Map<String, List<String>>): Any {
+        val constructor = model.constructors.firstOrNull { it.parameters.isNotEmpty() }
+            ?: error("${model.simpleName} não possui um construtor com parâmetros.")
+
+        val fields = getModelFields(model).associateBy { it.name }
+
+        val arguments = constructor.parameters.mapNotNull { parameter ->
+            val field = fields[parameter.name] ?: return@mapNotNull null
+            val raw = params[field.column].orEmpty().filter { it.isNotEmpty() }
+
+            when {
+                field.isMultiValued -> parameter to raw.map { Insert.convert(it, field.type) }
+                field.type == Boolean::class -> when {
+                    raw.isNotEmpty() -> parameter to Insert.convert(raw.first(), Boolean::class)
+                    parameter.isOptional -> null
+                    else -> parameter to false
+                }
+                raw.isNotEmpty() -> parameter to Insert.convert(raw.first(), field.type)
+                field.isNullable -> parameter to null
+                else -> null
+            }
+        }.toMap()
+
+        return constructor.callBy(arguments)
+    }
+
+    /**
+     * Gera as instruções de inserção de uma instância do modelo: a linha
+     * principal e, para cada campo `@Multivalued`, as linhas da tabela
+     * intermediária.
+     *
+     * As colunas com `@PrimaryKey(autoIncrease = true)` ficam de fora do
+     * comando — é o próprio banco que gera o valor delas.
+     */
+    fun generateSqlInsertStatements(model: KClass<*>, instance: Any): List<InsertInstruction> {
+        val fields = getModelFields(model)
+        val tableName = getTableName(model)
+        val primaryKeys = fields.filter { it.isPk }
+        require(primaryKeys.isNotEmpty()) { "${model.simpleName} precisa de uma @PrimaryKey para ser inserido." }
+
+        val columns = fields.filter { !it.isMultiValued && !it.autoIncreases }
+        val main = InsertInstruction(
+            table = tableName,
+            sql = "insert into $tableName (${columns.joinToString { it.column }}) " +
+                "values (${columns.joinToString { "?" }})",
+            values = columns.map { Insert.toJdbcValue(readValue(it, instance)) }
+        )
+
+        val children = fields.filter { it.isMultiValued }.flatMap { field ->
+            val childTable = "${tableName}_${field.column}"
+            val foreignColumns = primaryKeys.map { "${tableName}_${it.column}" }
+            val foreignValues = primaryKeys.map { Insert.toJdbcValue(readValue(it, instance)) }
+            val values = (readValue(field, instance) as? Collection<*>).orEmpty()
+
+            values.map { value ->
+                InsertInstruction(
+                    table = childTable,
+                    sql = "insert into $childTable (${(foreignColumns + "value").joinToString()}) " +
+                        "values (${(foreignColumns + "value").joinToString { "?" }})",
+                    values = foreignValues + Insert.toJdbcValue(value)
+                )
+            }
+        }
+
+        return listOf(main) + children
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun readValue(field: Field, instance: Any): Any? =
+        (field.property as KProperty1<Any, Any?>).get(instance)
+
+    // ===============================================================
     // HTML
     // ===============================================================
 
@@ -356,7 +444,7 @@ object Tucuapi {
     /**
      * Gera um elemento `input` HTML
      */
-    private fun input(field: Field): String {
+    private fun input(field: Field, errors: Map<String, String> = emptyMap()): String {
         val requiredClause = if (!field.isNullable && !field.isMultiValued && field.type != Boolean::class) " required" else ""
         val placeholderAttr = field.placeholder?.let { " placeholder=\"${escape(it)}\"" } ?: ""
 
@@ -382,16 +470,20 @@ object Tucuapi {
             }
         }
         val footnoteElement = field.footnote?.let { "\n<p>${escape(it)}</p>" } ?: ""
-        return "<label for=\"${field.column}\">${escape(field.label)}</label>\n$actualInput$footnoteElement"
+        val errorElement = errors[field.column]?.let { "\n<p class=\"error\">${escape(it)}</p>" } ?: ""
+        return "<label for=\"${field.column}\">${escape(field.label)}</label>\n$actualInput$footnoteElement$errorElement"
     }
 
     /**
      * Gera um formulário HTML para criar novas instâncias de `model`.
+     *
+     * @param errors os erros de validação, indexados pelo nome da coluna — são
+     * exibidos abaixo do campo correspondente
      */
-    fun generateHtmlForm(model: KClass<*>, action: String = "/salvar"): String {
+    fun generateHtmlForm(model: KClass<*>, action: String = "/salvar", errors: Map<String, String> = emptyMap()): String {
         getTableName(model)
         val modelName = model.findAnnotation<Model>()?.title?.ifBlank { null } ?: model.simpleName!!
-        val body = getModelFields(model).filter { !it.omit }.joinToString("\n") { "<div>\n${input(it)}\n</div>" }
+        val body = getModelFields(model).filter { !it.omit }.joinToString("\n") { "<div>\n${input(it, errors)}\n</div>" }
         return "<h1>Criar ${escape(modelName)}</h1><form method=\"post\" action=\"$action\">\n$body\n<button type=\"submit\">Salvar</button>\n</form>"
     }
 

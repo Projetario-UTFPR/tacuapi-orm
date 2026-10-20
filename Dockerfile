@@ -1,17 +1,16 @@
 # ---------------------------------------------------------------------------
 # Estágio de build: compila a biblioteca e a aplicação PoC.
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:21-jdk AS build
+FROM gradle:jdk21 AS build
 
 WORKDIR /src
 
-COPY gradlew ./
-COPY gradle ./gradle
 COPY settings.gradle.kts ./
+COPY gradle/libs.versions.toml ./gradle/libs.versions.toml
 COPY lib ./lib
 COPY poc-example ./poc-example
 
-RUN chmod +x gradlew && ./gradlew :poc-example:installDist --no-daemon
+RUN gradle :poc-example:installDist --no-daemon
 
 # ---------------------------------------------------------------------------
 # Estágio de execução: PostgreSQL + JRE + aplicação no mesmo container.

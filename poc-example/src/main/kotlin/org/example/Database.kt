@@ -1,5 +1,6 @@
 package org.example
 
+import tucuapi.lib.InferredValue
 import tucuapi.lib.Tucuapi
 import java.sql.Connection
 import java.sql.DriverManager
@@ -92,6 +93,39 @@ object Database {
         statements.forEach { statement ->
             println("[db] $statement")
             connection.createStatement().use { it.execute(statement) }
+        }
+    }
+
+    /**
+     * Insere uma instância do modelo no banco.
+     *
+     * A linha principal e as linhas das tabelas intermediárias (`@Multivalued`)
+     * são inseridas na mesma transação: ou entra tudo, ou nada entra.
+     */
+    fun insert(model: KClass<*>, instance: Any) {
+        val instructions = Tucuapi.generateSqlInsertStatements(model, instance)
+
+        connect().use { connection ->
+            connection.autoCommit = false
+            try {
+                instructions.forEach { instruction ->
+                    connection.prepareStatement(instruction.sql).use { statement ->
+                        instruction.values.forEachIndexed { index, value ->
+                            when (value) {
+                                null -> statement.setNull(index + 1, java.sql.Types.NULL)
+                                // o driver JDBC não conhece os enums: quem converte é o banco
+                                is InferredValue -> statement.setObject(index + 1, value.value, java.sql.Types.OTHER)
+                                else -> statement.setObject(index + 1, value)
+                            }
+                        }
+                        statement.executeUpdate()
+                    }
+                }
+                connection.commit()
+            } catch (error: Exception) {
+                connection.rollback()
+                throw error
+            }
         }
     }
 

@@ -23,49 +23,32 @@ private val models: Array<KClass<*>> = arrayOf(User::class)
 /**
  * Monta a página HTML com o formulário gerado a partir do modelo.
  */
-private fun htmlPage(model: KClass<*>): String = """
+private fun htmlPage(model: KClass<*>, errors: Map<String, String> = emptyMap()): String = """
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
         <meta charset="utf-8">
         <title>Tacuapi</title>
-        <style>
-            form {
-              max-width: 640px;
-              padding: 16px;
-              border: 1px solid black;
-              border-radius: 8px;
-
-              button {
-                padding: 6px 16px;
-                border-radius: 7px;
-                font-weight: 500;
-                background: #ffbf28;
-                appearance: none;
-                border: none;
-              }
-            }
-          
-            div:has(input,select,textarea) {
-              margin-bottom: 12px;
-              display: flex;
-              flex-direction: column;
-              gap: 4px;
-
-              label {
-                font-weight: 600;
-              }
-
-              p {
-                font-size: 0.85rem;
-                margin-block: 0;
-                margin-top: 4px;
-              }
-            }
-      </style>
     </head>
     <body>
-    ${Tucuapi.generateHtmlForm(model)}
+    ${Tucuapi.generateHtmlForm(model, errors = errors)}
+    </body>
+    </html>
+""".trimIndent()
+
+/**
+ * Página exibida depois que o cadastro é salvo.
+ */
+private fun savedPage(): String = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="utf-8">
+        <title>Tacuapi</title>
+    </head>
+    <body>
+    <h1>Cadastro salvo!</h1>
+    <p><a href="/">Cadastrar outro</a></p>
     </body>
     </html>
 """.trimIndent()
@@ -73,12 +56,26 @@ private fun htmlPage(model: KClass<*>): String = """
 fun main() {
     val port = System.getenv("TACUAPI_PORT")?.toIntOrNull() ?: 8080
 
-    // 1. Migração: cria as tabelas no PostgreSQL (roda uma única vez).
+    // 1. Migração: mantém o banco em dia com as classes.
     Database.migrate(*models)
 
-    // 2. Uma única rota: devolve o formulário HTML do modelo.
+    // 2. As rotas: o formulário e o salvamento.
     val page = htmlPage(User::class)
     MiniHttpServer(port)
         .route("/") { Response(page) }
+        .route("/salvar", "POST") { exchange ->
+            val params = exchange.formParams()
+            val errors = Tucuapi.validate(User::class, params)
+
+            if (errors.isNotEmpty()) {
+                println("[http] Cadastro recusado: $errors")
+                Response(htmlPage(User::class, errors), status = 400)
+            } else {
+                val user = Tucuapi.createInstance(User::class, params)
+                Database.insert(User::class, user)
+                println("[http] Cadastro salvo.")
+                Response(savedPage())
+            }
+        }
         .start()
 }
