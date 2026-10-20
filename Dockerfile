@@ -35,6 +35,6 @@ COPY --from=build /src/poc-example/build/install/poc-example/ /app/
 COPY docker/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 
-EXPOSE 8080
+EXPOSE 8080 5432
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]

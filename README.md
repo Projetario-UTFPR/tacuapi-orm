@@ -35,7 +35,7 @@ sobe a aplicação.
 
 ```bash
 docker build -t tacuapi-poc .
-docker run --rm -p 8080:8080 tacuapi-poc
+docker run --rm -p 8080:8080 tacuapi-poc -p 5432:5432 # expõe ambos o server HTTP e o banco de dados
 ```
 
 Depois é só abrir <http://localhost:8080> no navegador (ou `curl http://localhost:8080`).
