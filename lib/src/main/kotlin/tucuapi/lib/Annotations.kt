@@ -1,10 +1,10 @@
 package tucuapi.lib
 
-annotation class Model(val name: String)
+annotation class Model(val name: String = "")
 
-annotation class ModelEnum(val name: String)
+annotation class ModelEnum(val name: String = "")
 
-annotation class ModelEnumVariant(val value: String, val label: String)
+annotation class ModelEnumVariant(val value: String = "", val label: String = "")
 
 annotation class PrimaryKey
 
