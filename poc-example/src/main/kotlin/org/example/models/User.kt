@@ -1,14 +1,15 @@
 package org.example.models
 
+import tucuapi.lib.Column
 import tucuapi.lib.DateTime
-import tucuapi.lib.InputMultiselect
+import tucuapi.lib.InputField
+import tucuapi.lib.Multivalued
 import tucuapi.lib.InputOmit
 import tucuapi.lib.Model
 import tucuapi.lib.ModelEnum
 import tucuapi.lib.ModelEnumVariant
 import tucuapi.lib.PrimaryKey
 import tucuapi.lib.Text
-import tucuapi.lib.Unique
 import tucuapi.lib.VarcharConfig
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -21,7 +22,7 @@ import kotlin.uuid.Uuid
 enum class UserRole {
     @ModelEnumVariant("admin")
     ADMIN,
-    @ModelEnumVariant("admin")
+    @ModelEnumVariant("user")
     USER
 }
 
@@ -41,26 +42,39 @@ enum class UserCapabilities {
 /**
  * Modelo do usuário
  */
-@Model(name = "users")
+@Model(title = "Uruário", table = "users")
 class User {
     @PrimaryKey
     @InputOmit
+    @Column(type = "uuid")
     val id = Uuid.random()
+
     @VarcharConfig(size = 200)
     val name: String
-    @Unique
+
+    @Column(unique = true)
+    @InputField(label = "Endereço de e-mail", placeholder = "johndoe@utfpr.com", type = "email")
     val email: String
+
+    @InputField(footnote = "Deve ter, no mínimo, 6 dígitos.")
     val password: String
+
     @DateTime(timezoneOffset = true)
     @InputOmit
+    @Column(name = "created_at")
     val createdAt: Instant
+
     @InputOmit
+    @Column(name = "updated_at")
     val updatedAt: Instant? = null
     val role: UserRole
+
     @InputOmit
     val likes: Int = 1
-    @InputMultiselect
+
+    @Multivalued
     val capabilities: List<UserCapabilities>
+
     @Text
     val biography: String
 

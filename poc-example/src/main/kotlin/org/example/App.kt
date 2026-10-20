@@ -3,6 +3,9 @@
  */
 package org.example
 
+import org.example.models.User
+import tucuapi.lib.Tucuapi
+
 class App {
     val greeting: String
         get() {
@@ -12,5 +15,6 @@ class App {
 }
 
 fun main() {
-    println(App().greeting)
+    val statements = Tucuapi.generateSqlSetupStatement(User::class)
+    println(statements)
 }
