@@ -29,6 +29,7 @@ dependencies {
 
     // This dependency is used by the application.
     implementation(libs.guava)
+    implementation(libs.postgresql)
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
     implementation(project(":lib"))
 }

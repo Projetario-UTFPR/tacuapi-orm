@@ -7,6 +7,7 @@ package tucuapi.lib
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import java.sql.Connection
 import kotlin.time.*
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
@@ -78,6 +79,11 @@ object Tucuapi {
     // ===============================================================
     // SQL
     // ===============================================================
+
+    /** Sufixos que o PostgreSQL usa para nomear as restrições criadas pelo SQL. */
+    private const val PRIMARY_KEY_SUFFIX = "_pkey"
+    private const val UNIQUE_SUFFIX = "_key"
+    private const val FOREIGN_KEY_SUFFIX = "_fkey"
 
     /**
      * Pega todos os campos da classe (na ordem em que foram declarados no construtor).
@@ -187,7 +193,11 @@ object Tucuapi {
         return listOf(wrapperStatement) + multivaluedTablesStatements
     }
 
-    fun generateSqlSetupStatement(vararg models: KClass<*>): String {
+    /**
+     * Gera a lista de comandos SQL (um comando por elemento) para criar o esquema
+     * dos modelos: os _enums_ primeiro e, depois, as tabelas.
+     */
+    fun generateSqlSetupStatements(vararg models: KClass<*>): List<String> {
         val enums = models
             .flatMap { getModelFields(it) }
             .map { it.type }
@@ -202,8 +212,122 @@ object Tucuapi {
             "create type $enumName as enum ($variantsStatement);"
         }
 
-        val setupStatements = createEnumStatements + models.flatMap { generateSqlTableStatements(it) }
-        return setupStatements.joinToString("\n\n")
+        return createEnumStatements + models.flatMap { generateSqlTableStatements(it) }
+    }
+
+    /**
+     * Gera o comando SQL (único) para criar o esquema dos modelos.
+     */
+    fun generateSqlSetupStatement(vararg models: KClass<*>): String =
+        generateSqlSetupStatements(*models).joinToString("\n\n")
+
+    // ===============================================================
+    // SCHEMA
+    // ===============================================================
+
+    /**
+     * Descreve o esquema que a classe do modelo exige: a tabela principal e as
+     * tabelas intermediárias dos campos multivalorados.
+     *
+     * É a "versão desejada" do banco — a que o motor de comparação usa para
+     * dizer o que mudou na classe.
+     */
+    fun describeSchemas(model: KClass<*>): List<TableSchema> {
+        val tableName = getTableName(model)
+        val fields = getModelFields(model)
+        val primaryKeys = fields.filter { it.isPk }
+
+        val columns = fields.filter { !it.isMultiValued }.map { field ->
+            ColumnSchema(
+                name = field.column,
+                type = resolveSqlColumnType(field),
+                nullable = field.isNullable && !field.isPk,
+                default = field.columnDefaultValue,
+                identity = field.autoIncreases
+            )
+        }
+
+        val primaryKey = primaryKeys.takeIf { it.isNotEmpty() }?.let { keys ->
+            ConstraintSchema(name = "$tableName${PRIMARY_KEY_SUFFIX}", columns = keys.map { it.column })
+        }
+
+        val uniques = fields.filter { it.unique && !it.isMultiValued }.map { field ->
+            ConstraintSchema(name = "${tableName}_${field.column}$UNIQUE_SUFFIX", columns = listOf(field.column))
+        }
+
+        val wrapper = TableSchema(
+            name = tableName,
+            columns = columns,
+            primaryKey = primaryKey,
+            uniqueConstraints = uniques
+        )
+
+        val multivalued = fields.filter { it.isMultiValued }.map { field ->
+            require(primaryKeys.isNotEmpty()) { "@Multivalued exige ao menos uma @PrimaryKey em ${model.simpleName}" }
+            val table = "${tableName}_${field.column}"
+            val foreignColumns = primaryKeys.map { pk -> "${tableName}_${pk.column}" }
+
+            TableSchema(
+                name = table,
+                columns = primaryKeys.map { pk ->
+                    ColumnSchema(
+                        name = "${tableName}_${pk.column}",
+                        type = resolveSqlColumnType(pk),
+                        nullable = false
+                    )
+                } + ColumnSchema(
+                    name = "value",
+                    type = getBaseSqlColumnType(field.type, field),
+                    nullable = false
+                ),
+                primaryKey = ConstraintSchema(name = "$table$PRIMARY_KEY_SUFFIX", columns = foreignColumns + "value"),
+                foreignKeys = listOf(
+                    ConstraintSchema(
+                        name = "${table}_${foreignColumns.first()}$FOREIGN_KEY_SUFFIX}",
+                        columns = foreignColumns,
+                        referencedTable = tableName,
+                        referencedColumns = primaryKeys.map { it.column }
+                    )
+                )
+            )
+        }
+
+        return listOf(wrapper) + multivalued
+    }
+
+    /**
+     * Gera os comandos SQL que atualizam as tabelas diante das mudanças feitas
+     * na classe do modelo (colunas adicionadas ou removidas, tipos, nulidade,
+     * valores padrão, `unique`, chaves primárias e estrangeiras).
+     *
+     * @param current o esquema atual das tabelas — veja [PostgresSchema.readTableSchema]
+     * @param allowDestructive quando `false`, colunas e restrições que saíram da
+     * classe são preservadas no banco
+     */
+    fun generateSqlUpdateStatements(
+        model: KClass<*>,
+        current: List<TableSchema>,
+        allowDestructive: Boolean = true
+    ): List<String> {
+        val desired = describeSchemas(model)
+        return desired.flatMap { schema ->
+            val actual = current.firstOrNull { it.name == schema.name } ?: return@flatMap emptyList()
+            SchemaDiff.diff(schema, actual, allowDestructive)
+        }
+    }
+
+    /**
+     * Gera os comandos SQL que atualizam as tabelas, lendo o esquema atual
+     * diretamente do PostgreSQL.
+     */
+    fun generateSqlUpdateStatements(
+        connection: Connection,
+        model: KClass<*>,
+        allowDestructive: Boolean = true
+    ): List<String> {
+        val desired = describeSchemas(model)
+        val current = desired.mapNotNull { PostgresSchema.readTableSchema(connection, it.name) }
+        return generateSqlUpdateStatements(model, current, allowDestructive)
     }
 
     // ===============================================================

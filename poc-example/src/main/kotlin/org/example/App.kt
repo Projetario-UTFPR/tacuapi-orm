@@ -5,6 +5,7 @@ package org.example
 
 import org.example.models.User
 import tucuapi.lib.Tucuapi
+import kotlin.reflect.KClass
 
 class App {
     val greeting: String
@@ -14,10 +15,36 @@ class App {
         }
 }
 
+/**
+ * Modelos usados pela PoC — por enquanto, apenas o modelo `User`.
+ */
+private val models: Array<KClass<*>> = arrayOf(User::class)
+
+/**
+ * Monta a página HTML com o formulário gerado a partir do modelo.
+ */
+private fun htmlPage(model: KClass<*>): String = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="utf-8">
+        <title>Tacuapi</title>
+    </head>
+    <body>
+    ${Tucuapi.generateHtmlForm(model)}
+    </body>
+    </html>
+""".trimIndent()
+
 fun main() {
-    val statements = Tucuapi.generateSqlSetupStatement(User::class)
-    val form = Tucuapi.generateHtmlForm(User::class)
-    println(statements)
-    println()
-    println(form)
+    val port = System.getenv("TACUAPI_PORT")?.toIntOrNull() ?: 8080
+
+    // 1. Migração: cria as tabelas no PostgreSQL (roda uma única vez).
+    Database.migrate(*models)
+
+    // 2. Uma única rota: devolve o formulário HTML do modelo.
+    val page = htmlPage(User::class)
+    MiniHttpServer(port)
+        .route("/") { Response(page) }
+        .start()
 }

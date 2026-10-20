@@ -8,10 +8,113 @@ em páginas HTML, bem como o código SQL necessário para criar a tabela.
 ## Exemplo
 Refira-se à aplicação [PoC]() para um exemplo da biblioteca em utilização.
 
+## PoC: servidor HTTP + PostgreSQL
+
+A aplicação PoC (`poc-example`) é um servidor HTTP mínimo — construído sobre o
+`com.sun.net.httpserver` que já vem na JDK, sem dependências extras — que faz
+o caminho completo:
+
+1. **conecta** no PostgreSQL (conexão _hardcoded_, com exceção de variáveis de
+   ambiente que sobrescrevem o padrão);
+2. **migra**: cria o esquema a partir dos modelos (`Tucuapi.generateSqlSetupStatements`)
+   na primeira execução e, em todas elas, compara a classe com o banco para
+   **atualizar** a tabela (`Tucuapi.generateSqlUpdateStatements`);
+3. **serve**: a rota `GET /` devolve o formulário HTML gerado a partir do modelo.
+
+```kotlin
+MiniHttpServer(port)
+    .route("/") { Response("<html><body>${Tucuapi.generateHtmlForm(User::class)}</body></html>") }
+    .start()
+```
+
+### Com Docker (recomendado)
+
+O [`Dockerfile`](Dockerfile) monta um container único com o PostgreSQL, o JRE e a
+aplicação — o `docker/start.sh` sobe o banco, espera ele ficar pronto e então
+sobe a aplicação.
+
+```bash
+docker build -t tacuapi-poc .
+docker run --rm -p 8080:8080 tacuapi-poc
+```
+
+Depois é só abrir <http://localhost:8080> no navegador (ou `curl http://localhost:8080`).
+
+Para manter o banco entre execuções, monte um volume no diretório de dados do
+PostgreSQL: o esquema é criado apenas na primeira execução, mas a conferência
+com a classe continua rodando a cada start:
+
+```bash
+docker volume create tacuapi-data
+docker run --rm -p 8080:8080 -v tacuapi-data:/var/lib/postgresql/data tacuapi-poc
+```
+
+### Sem Docker
+
+Suba apenas o PostgreSQL e rode a aplicação pela Gradle:
+
+```bash
+docker run -d --name tacuapi-pg -p 5432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=tacuapi \
+  postgres:16-alpine
+
+./gradlew :poc-example:run
+```
+
+### Observações
+
+- A rota `POST /salvar` — para onde o formulário aponta — **não** está
+  implementada nesta PoC: o escopo é gerar a tabela e servir o formulário.
+- As variáveis `TACUAPI_DB_URL`, `TACUAPI_DB_USER`, `TACUAPI_DB_PASSWORD` e
+  `TACUAPI_PORT` sobrescrevem os valores _hardcoded_ quando definidas.
+
+## Atualização de tabelas
+
+Quando a classe do modelo muda, a biblioteca compara a "versão desejada" do
+esquema (gerada a partir da classe) com a "versão atual" (lida do banco) e
+gera os comandos `alter table` que levam uma à outra.
+
+```kotlin
+// lendo o esquema atual do PostgreSQL
+val current = PostgresSchema.readTableSchema(connection, "users")
+
+// comparando com a classe
+val statements = Tucuapi.generateSqlUpdateStatements(User::class, listOf(current))
+// ou, direto do banco:
+// val statements = Tucuapi.generateSqlUpdateStatements(connection, User::class)
+```
+
+O que é comparado:
+
+| Mudança na classe | Comando gerado |
+| --- | --- |
+| campo novo | `alter table users add column nickname varchar(255)` |
+| campo removido | `alter table users drop column nickname` |
+| tipo diferente | `alter table users alter column likes type bigint using likes::bigint` |
+| campo passou a ser opcional | `alter table users alter column nickname drop not null` |
+| campo passou a ser obrigatório | `alter table users alter column name set not null` |
+| valor padrão novo | `alter table users alter column likes set default 0` |
+| valor padrão removido | `alter table users alter column likes drop default` |
+| `unique` novo | `alter table users add constraint users_email_key unique (email)` |
+| `unique` removido | `alter table users drop constraint users_email_key` |
+| chave primária trocada | `drop constraint users_pkey` + `add constraint users_pkey primary key (id)` |
+
+Detalhes:
+
+- O esquema desejado é gerado por `Tucuapi.describeSchemas(model)`, que também
+  cuida das tabelas intermediárias dos campos `@Multivalued`.
+- As operações destrutivas (remover coluna ou restrição) podem ser desligadas
+  com `allowDestructive = false`.
+- A comparação ignora as diferenças de nomenclatura entre o SQL gerado e o que
+  o PostgreSQL devolve (`varchar(200)` × `character varying(200)`,
+  `timestamptz` × `timestamp with time zone`, etc.).
+- A classe é a fonte da verdade: restrições do banco que não estão na classe
+  são removidas.
+
 ## Roadmap
 - [x] Gerar o HTML dos inputs.
 - [x] Gerar o SQL para criar a tabela.
-- [ ] Gerar o SQL para atualizar uma tabela diante de mudanças na classe.
+- [x] Gerar o SQL para atualizar uma tabela diante de mudanças na classe.
 
 ## Anotações
 
