@@ -20,9 +20,9 @@ import kotlin.uuid.Uuid
  */
 @ModelEnum(name = "user_role_e")
 enum class UserRole {
-    @ModelEnumVariant("admin")
+    @ModelEnumVariant("admin", label = "Administrador")
     ADMIN,
-    @ModelEnumVariant("user")
+    @ModelEnumVariant("user", label = "Usuário comum")
     USER
 }
 
@@ -31,12 +31,12 @@ enum class UserRole {
  */
 @ModelEnum(name = "user_capabilities_e")
 enum class UserCapabilities {
-    @ModelEnumVariant("comment")
+    @ModelEnumVariant("comment", label = "Comentar")
     Comment,
-    @ModelEnumVariant("report")
+    @ModelEnumVariant("report", label = "Denunciar")
     Report,
-    @ModelEnumVariant("like")
-    Like,
+    @ModelEnumVariant("like", label = "Avaliar")
+    Rate,
 }
 
 /**
