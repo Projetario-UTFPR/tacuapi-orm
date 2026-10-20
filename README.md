@@ -19,7 +19,9 @@ o caminho completo:
 2. **migra**: cria o esquema a partir dos modelos (`Tucuapi.generateSqlSetupStatements`)
    na primeira execução e, em todas elas, compara a classe com o banco para
    **atualizar** a tabela (`Tucuapi.generateSqlUpdateStatements`);
-3. **serve**: a rota `GET /` devolve o formulário HTML gerado a partir do modelo.
+3. **serve**: a rota `GET /` devolve o formulário HTML gerado a partir do modelo;
+4. **salva**: a rota `POST /salvar` valida o formulário, monta o modelo e grava
+   o registro no banco (`Tucuapi.createInstance` + `Tucuapi.generateSqlInsertStatements`).
 
 ```kotlin
 MiniHttpServer(port)
@@ -63,8 +65,9 @@ docker run -d --name tacuapi-pg -p 5432:5432 \
 
 ### Observações
 
-- A rota `POST /salvar` — para onde o formulário aponta — **não** está
-  implementada nesta PoC: o escopo é gerar a tabela e servir o formulário.
+- O formulário aponta para `POST /salvar`, que valida os dados
+  (`Tucuapi.validate`) e devolve o formulário de novo, com os erros, quando
+  algum campo está inválido.
 - As variáveis `TACUAPI_DB_URL`, `TACUAPI_DB_USER`, `TACUAPI_DB_PASSWORD` e
   `TACUAPI_PORT` sobrescrevem os valores _hardcoded_ quando definidas.
 
@@ -111,10 +114,61 @@ Detalhes:
 - A classe é a fonte da verdade: restrições do banco que não estão na classe
   são removidas.
 
+## Inserção
+
+O caminho completo do cadastro: os parâmetros do formulário viram uma instância
+do modelo, e a instância vira SQL.
+
+```kotlin
+// 1. valida (os erros são indexados pelo nome da coluna)
+val errors = Tucuapi.validate(User::class, params)
+
+// 2. monta o modelo a partir dos parâmetros
+val user = Tucuapi.createInstance(User::class, params)
+
+// 3. gera o SQL de inserção
+val instructions = Tucuapi.generateSqlInsertStatements(User::class, user)
+```
+
+Cada `InsertInstruction` tem o `sql` (com `?` no lugar de cada valor) e os
+`values` na mesma ordem dos `?` — basta vinculá-los num `PreparedStatement`:
+
+```kotlin
+instructions.forEach { instruction ->
+    connection.prepareStatement(instruction.sql).use { statement ->
+        instruction.values.forEachIndexed { index, value ->
+            when (value) {
+                null -> statement.setNull(index + 1, java.sql.Types.NULL)
+                // o driver JDBC não conhece os enums: quem converte é o banco
+                is InferredValue -> statement.setObject(index + 1, value.value, java.sql.Types.OTHER)
+                else -> statement.setObject(index + 1, value)
+            }
+        }
+        statement.executeUpdate()
+    }
+}
+```
+
+Detalhes:
+
+- Os valores são convertidos a partir do tipo do campo: números, booleanos,
+  datas (`2026-10-20T15:30` do `datetime-local` é lido como UTC), _enums_ e
+  listas de _enums_.
+- O valor gravado de um _enum_ é o da variante (`@ModelEnumVariant`), e não o
+  nome da constante.
+- Campos `@Multivalued` geram uma inserção na tabela intermediária para cada
+  valor escolhido.
+- Colunas com `@PrimaryKey(autoIncrease = true)` ficam de fora do comando — é o
+  banco que gera o valor delas.
+- O construtor da classe **não pode exigir** valores que não venham do
+  formulário: campos como a chave primária devem ser gerados pela própria
+  classe (e não passados ao construtor).
+
 ## Roadmap
 - [x] Gerar o HTML dos inputs.
 - [x] Gerar o SQL para criar a tabela.
 - [x] Gerar o SQL para atualizar uma tabela diante de mudanças na classe.
+- [x] Gerar o SQL de inserção e salvar o registro a partir do formulário.
 
 ## Anotações
 

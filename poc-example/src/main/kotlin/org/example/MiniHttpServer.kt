@@ -29,21 +29,33 @@ data class Response(
  */
 class MiniHttpServer(private val port: Int) {
     private val server: HttpServer = HttpServer.create(InetSocketAddress(port), 0)
-    private val routes = mutableMapOf<String, (HttpExchange) -> Response>()
+    private val routes = mutableMapOf<String, Route>()
 
-    /** Registra uma rota. O caminho é comparado exatamente, semQueryString. */
-    fun route(path: String, handler: (HttpExchange) -> Response): MiniHttpServer = apply {
-        routes[path] = handler
+    private class Route(val method: String, val handler: (HttpExchange) -> Response)
+
+    /**
+     * Registra uma rota. O caminho é comparado exatamente, sem a query string.
+     *
+     * @param method o método HTTP aceito pela rota
+     */
+    fun route(path: String, method: String = "GET", handler: (HttpExchange) -> Response): MiniHttpServer = apply {
+        routes[path] = Route(method, handler)
     }
 
     /** Sobe o servidor (bloqueante). */
     fun start(): MiniHttpServer = apply {
         server.createContext("/") { exchange ->
-            val handler = routes[exchange.requestURI.path]
-            val response = when {
-                handler == null -> Response("<h1>404</h1><p>Rota não encontrada.</p>", status = 404)
-                exchange.requestMethod != "GET" -> Response("<h1>405</h1><p>Método não permitido.</p>", status = 405)
-                else -> handler(exchange)
+            val route = routes[exchange.requestURI.path]
+            val response = try {
+                when {
+                    route == null -> Response("<h1>404</h1><p>Rota não encontrada.</p>", status = 404)
+                    route.method != exchange.requestMethod ->
+                        Response("<h1>405</h1><p>Método não permitido.</p>", status = 405)
+                    else -> route.handler(exchange)
+                }
+            } catch (error: Exception) {
+                error.printStackTrace()
+                Response("<h1>500</h1><p>${error.message}</p>", status = 500)
             }
 
             val body = response.body.toByteArray(StandardCharsets.UTF_8)
