@@ -16,5 +16,8 @@ class App {
 
 fun main() {
     val statements = Tucuapi.generateSqlSetupStatement(User::class)
+    val form = Tucuapi.generateHtmlForm(User::class)
     println(statements)
+    println()
+    println(form)
 }

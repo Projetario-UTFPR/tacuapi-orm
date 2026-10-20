@@ -42,7 +42,7 @@ enum class UserCapabilities {
 /**
  * Modelo do usuário
  */
-@Model(title = "Uruário", table = "users")
+@Model(title = "Usuário", table = "users")
 class User {
     @PrimaryKey
     @InputOmit
@@ -56,7 +56,7 @@ class User {
     @InputField(label = "Endereço de e-mail", placeholder = "johndoe@utfpr.com", type = "email")
     val email: String
 
-    @InputField(footnote = "Deve ter, no mínimo, 6 dígitos.")
+    @InputField(footnote = "Deve ter, no mínimo, 6 dígitos.", type = "password")
     val password: String
 
     @DateTime(timezoneOffset = true)
