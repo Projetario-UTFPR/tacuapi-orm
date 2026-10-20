@@ -29,6 +29,40 @@ private fun htmlPage(model: KClass<*>, errors: Map<String, String> = emptyMap())
     <head>
         <meta charset="utf-8">
         <title>Tacuapi</title>
+        <style>
+            form {
+              max-width: 640px;
+              padding: 16px;
+              border: 1px solid black;
+              border-radius: 8px;
+
+              button {
+                padding: 6px 16px;
+                border-radius: 7px;
+                font-weight: 500;
+                background: #ffbf28;
+                appearance: none;
+                border: none;
+              }
+            }
+          
+            div:has(input,select,textarea) {
+              margin-bottom: 12px;
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+
+              label {
+                font-weight: 600;
+              }
+
+              p {
+                font-size: 0.85rem;
+                margin-block: 0;
+                margin-top: 4px;
+              }
+            }
+      </style>
     </head>
     <body>
     ${Tucuapi.generateHtmlForm(model, errors = errors)}
@@ -56,10 +90,8 @@ private fun savedPage(): String = """
 fun main() {
     val port = System.getenv("TACUAPI_PORT")?.toIntOrNull() ?: 8080
 
-    // 1. Migração: mantém o banco em dia com as classes.
     Database.migrate(*models)
 
-    // 2. As rotas: o formulário e o salvamento.
     val page = htmlPage(User::class)
     MiniHttpServer(port)
         .route("/") { Response(page) }
