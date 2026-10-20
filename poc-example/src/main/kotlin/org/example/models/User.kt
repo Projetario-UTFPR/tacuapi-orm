@@ -1,5 +1,15 @@
 package org.example.models
 
+import tucuapi.lib.DateTime
+import tucuapi.lib.InputMultiselect
+import tucuapi.lib.InputOmit
+import tucuapi.lib.Model
+import tucuapi.lib.ModelEnum
+import tucuapi.lib.ModelEnumVariant
+import tucuapi.lib.PrimaryKey
+import tucuapi.lib.Text
+import tucuapi.lib.Unique
+import tucuapi.lib.VarcharConfig
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -54,11 +64,20 @@ class User {
     @Text
     val biography: String
 
-    constructor(name: String, email: String, password: String, role: UserRole) {
+    constructor(
+        name: String,
+        email: String,
+        password: String,
+        biography: String,
+        role: UserRole,
+        capabilities: List<UserCapabilities>
+    ) {
         this.name = name
         this.email = email
         this.password = password
         this.createdAt = Clock.System.now()
         this.role = role
+        this.capabilities = capabilities
+        this.biography = biography
     }
 }
