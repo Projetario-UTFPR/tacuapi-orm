@@ -9,8 +9,8 @@ em páginas HTML, bem como o código SQL necessário para criar a tabela.
 Refira-se à aplicação [PoC]() para um exemplo da biblioteca em utilização.
 
 ## Roadmap
-- [ ] Gerar o HTML dos inputs.
-- [ ] Gerar o SQL para criar a tabela.
+- [x] Gerar o HTML dos inputs.
+- [x] Gerar o SQL para criar a tabela.
 - [ ] Gerar o SQL para atualizar uma tabela diante de mudanças na classe.
 
 ## Anotações
@@ -64,10 +64,14 @@ Permite especificar o tamanho máximo:
 - Gera o tipo `varchar(<SIZE>)` no SQL.
 - Limita o tamanho do _input_ a _size_ e força o tipo do _input_ ser `"text"`.
 
-### `@Unique`
+### `@Column`
 Anota um campo de uma classe.
 
-- Gera a cláusula `unique` no SQL da tabela.
+- Permite dizer se o campo é único.
+    - Gera a cláusula `unique` no SQL da tabela.
+- Permite dizer o nome do campo no banco de dados.
+- Permite forçar o tipo da coluna (via `type`).
+- Permite adicioanr um valor padrão no esquema da tabela (via `default`).
 
 ### `@DateTime(timezoneOffset = true)`
 Anota um campo de uma classe.
@@ -76,7 +80,7 @@ Anota um campo de uma classe.
     - Se `timezoneOffset = true`, força o tipo a suportar zona de fuso horário.
 - Força o tipo do _input_ ser `"datetime-local"`.
 
-### `@InputMultiselect`
+### `@Multivalued`
 Anota um campo de uma classe.
 
 - Faz gerar uma tabela intermediária para armazenar valores em relação 1:N.
@@ -87,3 +91,24 @@ Anota um campo de uma classe.
 
 - Faz o tipo da coluna ser `text` no SQL.
 - Faz o _input_ HTML ser um elemento `textarea`.
+
+## Observações da Linguagem
+
+### Singletones
+Declarar _singletones_ é trivial em Kotlin: basta declará-lo como um `object` ao invés de uma classe.
+A sintaxe do `object` permite, inclusive, implementar interfaces ou herdar classes de verdade, porém aquele objeto
+é a sua única instância em toda a _runtime_, é iniciado sob-demanda (_lazily) e é _thread-safe_.
+
+### Acesso encadeado a recursos nulos
+O Kotlin oferece vários _syntax-sugars_ pra acessar variáveis que podem ser nulas:
+- `?:` - é o equivalente ao _null-coalesce_ do JavaScript, ele diz que se o operando à esquerda for `null`, que se utilize
+    o operando à direita como valor de _fallback_.
+- `<expressão>?.<sequência de chamadas>` (_safe call operator_) - apenas seque `sequência de chamadas` se o resultado de `expressão` não for `null`.
+- `.let {}` (_scope function_) - é próximo a uma chamada do método `map`, porém o valor é acessado através da variável implícita `it`, e o
+    bloco de código (`{}`) só é executado se o valor não for nulo. É quase que o equivalente ao `Option::map` do Rust.
+    Outro ponto é que, diferente do `Option::map`, aqui você pode usar o _early return_.
+
+Usar o _safe call operator_ com o _scope function_ permite reescrever vários `if (val != null) { return X }` numa
+mesma linha e com a chamada escrita flúida, por exemplo: `val?.let { return X }`. (Observe que, sempre que
+um bloco de código é o último ou único parâmetro de uma função, não precisamos envolver o bloco de código entre
+parênteses.)
