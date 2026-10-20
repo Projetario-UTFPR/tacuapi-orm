@@ -20,25 +20,27 @@ private fun toSnakeCase(s: String) = s.replace(Regex("([a-z0-9])([A-Z])"), "$1_$
 private fun humanize(s: String) = toSnakeCase(s).replace('_', ' ').replaceFirstChar { it.uppercase() }
 
 class Field(val property: KProperty1<*, *>) {
-    private val input = property.findAnnotation<InputField>()
-    private val col = property.findAnnotation<Column>()
+    private val inputAnnotation = property.findAnnotation<InputField>()
+    private val columnAnnotation = property.findAnnotation<Column>()
+
+    val column = columnAnnotation?.name?.ifBlank { null } ?: toSnakeCase(property.name)
+    val unique = columnAnnotation?.unique ?: false
+    val isNullable = property.returnType.isMarkedNullable
+    val isMultiValued = property.hasAnnotation<Multivalued>()
+    val isPk = property.hasAnnotation<PrimaryKey>()
+    val autoIncreases = property.findAnnotation<PrimaryKey>()?.autoIncrease ?: false
+    val columnDefaultValue = columnAnnotation?.default?.ifBlank { null }
+
 
     // properties related to the HTML form input
     /**
      * O nome a ser usado no Input HTML
      */
     val name = property.name
-    val label = input?.label?.ifBlank { null } ?: humanize(property.name)
-    val placeholder = input?.placeholder?.ifBlank { null }
-    val footnote = input?.footnote?.ifBlank { null }
-    val inputType = input?.type?.ifBlank { null }
-
-    val column = col?.name?.ifBlank { null } ?: toSnakeCase(property.name)
-    val unique = col?.unique ?: false
-    val isNullable = property.returnType.isMarkedNullable
-    val isMultiValued = property.hasAnnotation<Multivalued>()
-    val isPk = property.hasAnnotation<PrimaryKey>()
-    val autoIncreases = property.findAnnotation<PrimaryKey>()?.autoIncrease ?: false
+    val label = inputAnnotation?.label?.ifBlank { null } ?: humanize(property.name)
+    val placeholder = inputAnnotation?.placeholder?.ifBlank { null }
+    val footnote = inputAnnotation?.footnote?.ifBlank { null }
+    val inputType = inputAnnotation?.type?.ifBlank { null }
     val omit = property.hasAnnotation<InputOmit>() || autoIncreases
 
     // gets either the field's type or the type T from List<T> or any generic stuff
@@ -160,6 +162,7 @@ object Tucuapi {
                 if (!field.isNullable || field.isPk) append(" not null")
                 if (field.autoIncreases) append(" generated always as identity")
                 if (field.unique) append(" unique")
+                if (field.columnDefaultValue != null) append(" default ${field.columnDefaultValue}")
             }
         }.toMutableList()
 

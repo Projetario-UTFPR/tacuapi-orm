@@ -9,7 +9,7 @@ annotation class InputField(
     val placeholder: String = "",
     val footnote: String = "",
     val type: String = ""
-    )
+)
 
 @Target(AnnotationTarget.CLASS)
 annotation class ModelEnum(val name: String = "")
@@ -27,7 +27,8 @@ annotation class ModelEnumVariant(val value: String = "", val label: String = ""
     val unique: Boolean = false,
     val name: String = "",
     val type: String = "",
-    )
+    val default: String = "",
+)
 
 @Target(AnnotationTarget.PROPERTY) annotation class DateTime(val timezoneOffset: Boolean = false)
 
